@@ -10,6 +10,12 @@ require '../lib/ember-thin'
 beforeEach ->
   @sinon = sinon.sandbox.create()
 
+  @stubAjax = (returns) =>
+    promise = new Ember.RSVP.Promise (resolve, reject) ->
+      resolve returns
+
+    @sinon.stub(Ember.Thin, 'ajax').returns promise
+
 afterEach ->
   do @sinon.restore
 
@@ -30,6 +36,8 @@ App.User = Ember.Thin.Model.define ->
   @url '/users'
 
   @field 'name'
+
+  @hasMany 'rooms', type: 'App.Room', inverse: 'members', nested: true
 
 App.Room = Ember.Thin.Model.define ->
   @url '/rooms'
@@ -77,14 +85,12 @@ describe 'Ember.Thin', ->
 
     describe '.fetch', ->
       beforeEach ->
-        promise = new Ember.RSVP.Promise (resolve, reject) ->
-          resolve [
+        @stubAjax
+          users: [
             {id: 1}
             {id: 2}
             {id: 3}
           ]
-
-        @sinon.stub(Ember.Thin, 'ajax').returns promise
 
       it 'should fetch records', (done) ->
         org = App.Organization.create(id: 42)

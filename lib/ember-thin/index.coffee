@@ -43,15 +43,16 @@ Ember.Thin.Model.reopenClass
     definition = {}
 
     for name, options of @schema.relations
-      definition[name] = @_getHasMany(options)
+      definition[name] = @_getHasMany(name, options)
 
     @reopen definition
 
-  _getHasMany: (options) ->
+  _getHasMany: (key, options) ->
     Ember.computed(->
       type = get(Ember.lookup, options.type) if typeof(options.type) == 'string'
 
       Ember.Thin.HasManyArray.create(
+        key:     key
         type:    type
         parent:  this
         options: options
@@ -72,14 +73,15 @@ Ember.Thin.Schema = Ember.Object.extend
     @relations[name] = options
 
 Ember.Thin.HasManyArray = Ember.ArrayProxy.extend
+  key:      required()
   type:     required()
   parent:   required()
   isLoaded: false
 
   fetch: ->
-    Ember.Thin.ajax(@get('_url'), 'GET').then (models) =>
+    Ember.Thin.ajax(@get('_url'), 'GET').then (json) =>
       @setProperties
-        content:  Ember.A(models)
+        content:  Ember.A(json[@get('key')])
         isLoaded: true
 
       this
