@@ -119,22 +119,6 @@ describe 'Ember.Thin', ->
           assert.equal user.get('name'), 'ursm'
           do done
 
-  describe '._url', ->
-    beforeEach ->
-      @user = App.User.create()
-
-    context 'have ID', ->
-      it 'should contain ID within URL', ->
-        @user.set 'id', 42
-
-        assert.equal @user.get('_url'), '/api/users/42'
-
-    context 'do not have ID', ->
-      it 'should not contain ID within URL', ->
-        @user.set 'id', null
-
-        assert.equal @user.get('_url'), '/api/users'
-
   describe 'one-to-many relation', ->
     describe '.load', ->
       it 'should load records', ->
@@ -158,14 +142,6 @@ describe 'Ember.Thin', ->
         members = org.get('members')
 
         assert.equal members.get('parent'), org
-
-    describe '.url', ->
-      beforeEach ->
-        @org = App.Organization.load(id: 42)
-
-      context 'nested resource', ->
-        it 'should return nested URL', ->
-          assert.equal @org.get('members.url'), '/api/organizations/42/members'
 
     context 'get unloaded relation', ->
       beforeEach ->
