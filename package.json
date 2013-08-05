@@ -1,0 +1,16 @@
+{
+  "name": "ember-thin",
+  "version": "0.0.1",
+  "description": "A yet another model library for Ember.js",
+  "main": "./lib/ember-thin/index",
+  "scripts": {
+    "test": "mocha"
+  },
+  "devDependencies": {
+    "coffee-script": "~1.6.3",
+    "mocha": "~1.12.0",
+    "sinon": "~1.7.3",
+    "jquery": "~1.8.3",
+    "handlebars": "~1.0.12"
+  }
+}
