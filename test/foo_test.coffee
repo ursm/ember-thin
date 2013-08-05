@@ -30,6 +30,7 @@ beforeEach ->
     @url '/organizations'
 
     @field 'id'
+    @field 'name'
 
     @hasMany 'members', type: 'App.User', inverse: 'organization', nested: true
 
@@ -47,16 +48,34 @@ beforeEach ->
     @url '/rooms'
 
     @field 'id'
+    @field 'name'
 
     @hasMany 'members', type: 'App.User', inverse: 'rooms', nested: true
 
 describe 'Ember.Thin', ->
   describe '.load', ->
-    it 'should load a record', ->
+    it 'should load payload and return a model', ->
       user = App.User.load(id: 42, real_name: 'foo')
 
       assert.equal user.get('id'),       42
       assert.equal user.get('realName'), 'foo'
+
+    it 'should load hasMany relation within payload', ->
+      user = App.User.load(id: 42, rooms: [
+        {id: 1, name: 'foo'}
+        {id: 2, name: 'bar'}
+      ])
+
+      assert.ok    user.get('rooms.isLoaded')
+      assert.equal user.get('rooms.length'),           2
+      assert.equal user.get('rooms.firstObject.name'), 'foo'
+
+    it 'should load belongsTo relation within payload', ->
+      user = App.User.load(id: 42, organization: {id: 4423, name: 'esminc'})
+
+      assert.equal user.get('organizationId'),           4423
+      assert.equal user.get('organization').constructor, App.Organization
+      assert.equal user.get('organization.name'),        'esminc'
 
     context 'twice', ->
       it 'should update a record', ->
@@ -68,9 +87,11 @@ describe 'Ember.Thin', ->
 
   describe '.toJSON', ->
     it 'should convert to an object', ->
-      user = App.User.load(id: 42, name: 'ursm', real_name: 'Keita Urashima')
+      json = App.User.create(id: 42, name: 'ursm', realName: 'Keita Urashima').toJSON()
 
-      assert.deepEqual user.toJSON(), id: 42, name: 'ursm', real_name: 'Keita Urashima'
+      assert.equal json.id,        42
+      assert.equal json.name,      'ursm'
+      assert.equal json.real_name, 'Keita Urashima'
 
   describe '.save', ->
     beforeEach ->
@@ -180,7 +201,7 @@ describe 'Ember.Thin', ->
         assert.ok    @org.get('members').contains(user)
 
     context 'when inverse relation is not loaded', ->
-      it 'should do nothing', ->
+      it 'should not do anything', ->
         user = App.User.load(id: 1, organization_id: 42)
 
         assert.equal user.get('organization'), @org

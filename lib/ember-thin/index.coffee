@@ -1,14 +1,20 @@
-{get, keys, required} = Ember
+{get, keys, required}  = Ember
+{camelize, underscore} = Ember.String
+
+sliceObject = (obj, keys) ->
+  ret = {}
+  ret[key] = obj[key] for key in keys
+  ret
 
 camelizeKeys = (obj) ->
-  converted = {}
-  converted[Ember.String.camelize(k)] = v for k, v of obj
-  converted
+  ret = {}
+  ret[camelize(k)] = v for k, v of obj
+  ret
 
 underscoreKeys = (obj) ->
-  converted = {}
-  converted[Ember.String.underscore(k)] = v for k, v of obj
-  converted
+  ret = {}
+  ret[underscore(k)] = v for k, v of obj
+  ret
 
 Ember.Thin =
   ajax: (method, url, data = {}) ->
@@ -67,10 +73,19 @@ Ember.Thin.Model.reopenClass
 
     camelized = camelizeKeys(attrs)
 
-    if model = @identityMap[id]
-      model.setProperties camelized
-    else
-      model = @identityMap[id] = @create(camelized)
+    unless model = @identityMap[id]
+      model = @identityMap[id] = @create()
+
+    model.setProperties sliceObject(camelized, keys(@schema._fields))
+
+    for name, options of @schema._hasManyRelations
+      if relAttrs = attrs[name]
+        model.get(name).load relAttrs
+
+    for name, options of @schema._belongsToRelations
+      if relAttrs = attrs[name]
+        lookupType(options.type).load relAttrs
+        model.set "#{name}Id", relAttrs.id
 
     do model.wireRelations
 
@@ -125,7 +140,8 @@ Ember.Thin.Schema = Ember.Object.extend
     @_hasManyRelations[name] = options
 
   belongsTo: (name, options = {}) ->
-    @_belongsToRelations[name] = options
+    @_belongsToRelations[name] =   options
+    @_fields["#{name}Id"]      ||= {}
 
 Ember.Thin.Schema.reopenClass
   define: (block) ->
