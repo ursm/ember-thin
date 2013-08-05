@@ -1,4 +1,4 @@
-{get, keys, required}  = Ember
+{computed, get, keys, lookup, required} = Ember
 {camelize, underscore} = Ember.String
 
 sliceObject = (obj, keys) ->
@@ -18,7 +18,7 @@ underscoreKeys = (obj) ->
 
 lookupType = (type) ->
   if typeof(type) == 'string'
-    get(Ember.lookup, type)
+    get(lookup, type)
   else
     type
 
@@ -75,7 +75,7 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
       if inverse = @get("#{name}.#{options.inverse}")
         inverse.pushObject this if inverse.get('isLoaded')
 
-  _url: Ember.computed(->
+  _url: computed(->
     baseUrl = config.rootUrl + @constructor.schema._url
 
     if id = @get('id')
@@ -108,7 +108,7 @@ Ember.Thin.Model.reopenClass
     @reopen definitions
 
   _getHasMany: (key, options) ->
-    Ember.computed(->
+    computed(->
       type = lookupType(options.type)
 
       Ember.Thin.HasManyArray.create(
@@ -122,7 +122,7 @@ Ember.Thin.Model.reopenClass
   _getBelongsTo: (key, options) ->
     idName = "#{key}Id"
 
-    Ember.computed(->
+    computed(->
       type = lookupType(options.type)
 
       type.find(@get(idName))
@@ -193,7 +193,7 @@ Ember.Thin.HasManyArray = Ember.ArrayProxy.extend Ember.Evented,
   fetch: ->
     Ember.Thin.ajax('GET', @get('url')).then @load.bind(this)
 
-  url: Ember.computed(->
+  url: computed(->
     if @get('options.nested')
       [@get('parent._url'), @get('key')].join('/')
     else
