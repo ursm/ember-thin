@@ -16,6 +16,12 @@ underscoreKeys = (obj) ->
   ret[underscore(k)] = v for k, v of obj
   ret
 
+lookupType = (type) ->
+  if typeof(type) == 'string'
+    get(Ember.lookup, type)
+  else
+    type
+
 Ember.Thin =
   ajax: (method, url, data = {}) ->
     new Ember.RSVP.Promise (resolve, reject) ->
@@ -39,13 +45,10 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
   save: ->
     method = if @get('id') then 'PUT' else 'POST'
 
-    Ember.Thin.ajax(method, @get('_url'), @toJSON()).then (json) =>
-      @setProperties camelizeKeys(json)
+    Ember.Thin.ajax(method, @get('_url'), @toJSON()).then @_load.bind(this)
 
-      this
-
-  _load: (attrs) ->
-    camelized = camelizeKeys(attrs)
+  _load: (json) ->
+    camelized = camelizeKeys(json)
 
     @setProperties sliceObject(camelized, keys(@constructor.schema._fields))
 
@@ -54,16 +57,18 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
 
     do @_wireRelations
 
-  _loadNestedHasMany: (attrs) ->
-    for name, options of @constructor.schema._hasManyRelations
-      if relAttrs = attrs[name]
-        @get(name).load relAttrs
+    this
 
-  _loadNestedBelongsTo: (attrs) ->
+  _loadNestedHasMany: (json) ->
+    for name in keys(@constructor.schema._hasManyRelations)
+      if nested = json[name]
+        @get(name).load nested
+
+  _loadNestedBelongsTo: (json) ->
     for name, options of @constructor.schema._belongsToRelations
-      if relAttrs = attrs[name]
-        lookupType(options.type).load relAttrs
-        @set "#{name}Id", relAttrs.id
+      if nested = json[name]
+        lookupType(options.type).load nested
+        @set "#{name}Id", nested.id
 
   _wireRelations: ->
     for name, options of @constructor.schema._belongsToRelations
@@ -79,24 +84,17 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
       baseUrl
   ).property('id')
 
-lookupType = (type) ->
-  if typeof(type) == 'string'
-    get(Ember.lookup, type)
-  else
-    type
-
 Ember.Thin.Model.reopenClass
   find: (id) ->
     @identityMap[id]
 
-  load: (attrs) ->
-    throw new Error('missing `id` attribute') unless id = attrs.id
+  load: (json) ->
+    throw new Error('missing `id` attribute') unless id = json.id
 
     unless model = @identityMap[id]
       model = @identityMap[id] = @create()
 
-    model._load attrs
-    model
+    model._load(json)
 
   _setupRelations: ->
     definitions = {}
@@ -180,8 +178,12 @@ Ember.Thin.HasManyArray = Ember.ArrayProxy.extend Ember.Evented,
     models = Ember.A(array).map(type.load.bind(type))
 
     @setProperties
-      isLoaded: true
       content:  Ember.A(models)
+      isLoaded: true
+
+    @trigger 'didLoad', this
+
+    this
 
   objectAtContent: ->
     do @fetch unless @get('isLoaded')
@@ -189,12 +191,7 @@ Ember.Thin.HasManyArray = Ember.ArrayProxy.extend Ember.Evented,
     @_super arguments...
 
   fetch: ->
-    Ember.Thin.ajax('GET', @get('url')).then (models) =>
-      @setProperties
-        content:  Ember.A(models)
-        isLoaded: true
-
-      @trigger 'load', this
+    Ember.Thin.ajax('GET', @get('url')).then @load.bind(this)
 
   url: Ember.computed(->
     if @get('options.nested')

@@ -154,9 +154,10 @@ describe 'Ember.Thin', ->
       it 'should fetch records', (done) ->
         org = App.Organization.load(id: 42)
 
-        org.get('members').on 'load', (members) ->
+        org.get('members').on 'didLoad', (members) ->
           assert.ok    members.get('isLoaded')
-          assert.equal members.get('length'), 3
+          assert.equal members.get('length'),                  3
+          assert.equal members.get('firstObject').constructor, App.User
           do done
 
         # trigger 'load'
