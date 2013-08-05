@@ -38,6 +38,7 @@ beforeEach ->
 
     @field 'id'
     @field 'name'
+    @field 'realName'
 
     @belongsTo 'organization', type: 'App.Organization', inverse: 'members'
     @hasMany   'rooms',        type: 'App.Room',         inverse: 'members', nested: true
@@ -52,9 +53,10 @@ beforeEach ->
 describe 'Ember.Thin', ->
   describe '.load', ->
     it 'should load a record', ->
-      user = App.User.load(id: 42)
+      user = App.User.load(id: 42, real_name: 'foo')
 
-      assert.equal user.get('id'), 42
+      assert.equal user.get('id'),       42
+      assert.equal user.get('realName'), 'foo'
 
     context 'twice', ->
       it 'should update a record', ->
@@ -66,9 +68,9 @@ describe 'Ember.Thin', ->
 
   describe '.toJSON', ->
     it 'should convert to an object', ->
-      user = App.User.load(id: 42, name: 'foo')
+      user = App.User.load(id: 42, name: 'ursm', real_name: 'Keita Urashima')
 
-      assert.deepEqual user.toJSON(), id: 42, name: 'foo'
+      assert.deepEqual user.toJSON(), id: 42, name: 'ursm', real_name: 'Keita Urashima'
 
   describe '.save', ->
     beforeEach ->
@@ -76,24 +78,24 @@ describe 'Ember.Thin', ->
 
     context 'when record is unsaved', ->
       beforeEach ->
-        @stubAjax 'POST', '/api/users', id: 42, name: 'foo'
+        @stubAjax 'POST', '/api/users', id: 42
 
       it 'should post data', (done) ->
         @user.save().then (user) =>
-          assert.equal     user, @user
-          assert.deepEqual user.toJSON(), id: 42, name: 'foo'
+          assert.equal user, @user
+          assert.equal user.get('id'), 42
           do done
 
     context 'when record is saved', ->
       beforeEach ->
         @user.set 'id', 42
 
-        @stubAjax 'PUT', '/api/users/42', id: 42, name: 'foo'
+        @stubAjax 'PUT', '/api/users/42', id: 42, name: 'ursm'
 
       it 'should post data', (done) ->
         @user.save().then (user) =>
-          assert.equal     user, @user
-          assert.deepEqual user.toJSON(), id: 42, name: 'foo'
+          assert.equal user, @user
+          assert.equal user.get('name'), 'ursm'
           do done
 
   describe '._url', ->
@@ -172,14 +174,14 @@ describe 'Ember.Thin', ->
         do @org.get('members').load
 
       it 'should be automatically wired', ->
-        user = App.User.load(id: 1, organizationId: 42)
+        user = App.User.load(id: 1, organization_id: 42)
 
         assert.equal user.get('organization'), @org
         assert.ok    @org.get('members').contains(user)
 
     context 'when inverse relation is not loaded', ->
       it 'should do nothing', ->
-        user = App.User.load(id: 1, organizationId: 42)
+        user = App.User.load(id: 1, organization_id: 42)
 
         assert.equal user.get('organization'), @org
         assert.ok    !@org.get('members.isLoaded')

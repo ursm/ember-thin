@@ -1,5 +1,15 @@
 {get, keys, required} = Ember
 
+camelizeKeys = (obj) ->
+  converted = {}
+  converted[Ember.String.camelize(k)] = v for k, v of obj
+  converted
+
+underscoreKeys = (obj) ->
+  converted = {}
+  converted[Ember.String.underscore(k)] = v for k, v of obj
+  converted
+
 Ember.Thin =
   ajax: (method, url, data = {}) ->
     new Ember.RSVP.Promise (resolve, reject) ->
@@ -17,13 +27,8 @@ Ember.Thin.config = config =
   rootUrl: ''
 
 Ember.Thin.Model = Ember.Object.extend Ember.Evented,
-  wireRelations: ->
-    for name, options of @constructor.schema._belongsToRelations
-      if inverse = @get("#{name}.#{options.inverse}")
-        inverse.pushObject this if inverse.get('isLoaded')
-
   toJSON: ->
-    @getProperties(keys(@constructor.schema._fields))
+    underscoreKeys(@getProperties(keys(@constructor.schema._fields)))
 
   _url: Ember.computed(->
     baseUrl = config.rootUrl + @constructor.schema._url
@@ -38,9 +43,14 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
     method = if @get('id') then 'PUT' else 'POST'
 
     Ember.Thin.ajax(method, @get('_url'), @toJSON()).then (json) =>
-      @setProperties json
+      @setProperties camelizeKeys(json)
 
       this
+
+  wireRelations: ->
+    for name, options of @constructor.schema._belongsToRelations
+      if inverse = @get("#{name}.#{options.inverse}")
+        inverse.pushObject this if inverse.get('isLoaded')
 
 lookupType = (type) ->
   if typeof(type) == 'string'
@@ -55,10 +65,12 @@ Ember.Thin.Model.reopenClass
   load: (attrs) ->
     throw new Error('missing `id` attribute') unless id = attrs.id
 
+    camelized = camelizeKeys(attrs)
+
     if model = @identityMap[id]
-      model.setProperties attrs
+      model.setProperties camelized
     else
-      model = @identityMap[id] = @create(attrs)
+      model = @identityMap[id] = @create(camelized)
 
     do model.wireRelations
 
@@ -158,9 +170,6 @@ Ember.Thin.HasManyArray = Ember.ArrayProxy.extend Ember.Evented,
         isLoaded: true
 
       @trigger 'load', this
-
-      this
-    , -> console.log arguments...
 
   url: Ember.computed(->
     if @get('options.nested')
