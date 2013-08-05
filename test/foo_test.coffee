@@ -5,11 +5,13 @@ global.ENV =
   EXTEND_PROTOTYPES: false
 
 require './vendor/ember-runtime'
-
-Ember.$ = require('jquery')
-
 require '../lib/ember-thin'
 
+beforeEach ->
+  @sinon = sinon.sandbox.create()
+
+afterEach ->
+  do @sinon.restore
 
 Ember.Thin.config.rootUrl = '/api'
 
@@ -35,13 +37,6 @@ App.Room = Ember.Thin.Model.define ->
   @field 'name'
 
   @hasMany 'members', type: 'App.User', inverse: 'rooms', nested: true
-
-
-beforeEach ->
-  @sinon = sinon.sandbox.create()
-
-afterEach ->
-  do @sinon.restore
 
 describe 'Ember.Thin', ->
   describe '.toJSON', ->
