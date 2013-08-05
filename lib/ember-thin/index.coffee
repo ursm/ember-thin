@@ -36,15 +36,6 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
   toJSON: ->
     underscoreKeys(@getProperties(keys(@constructor.schema._fields)))
 
-  _url: Ember.computed(->
-    baseUrl = config.rootUrl + @constructor.schema._url
-
-    if id = @get('id')
-      [baseUrl, id].join('/')
-    else
-      baseUrl
-  ).property('id')
-
   save: ->
     method = if @get('id') then 'PUT' else 'POST'
 
@@ -53,10 +44,40 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
 
       this
 
-  wireRelations: ->
+  _load: (attrs) ->
+    camelized = camelizeKeys(attrs)
+
+    @setProperties sliceObject(camelized, keys(@constructor.schema._fields))
+
+    @_loadNestedHasMany   camelized
+    @_loadNestedBelongsTo camelized
+
+    do @_wireRelations
+
+  _loadNestedHasMany: (attrs) ->
+    for name, options of @constructor.schema._hasManyRelations
+      if relAttrs = attrs[name]
+        @get(name).load relAttrs
+
+  _loadNestedBelongsTo: (attrs) ->
+    for name, options of @constructor.schema._belongsToRelations
+      if relAttrs = attrs[name]
+        lookupType(options.type).load relAttrs
+        @set "#{name}Id", relAttrs.id
+
+  _wireRelations: ->
     for name, options of @constructor.schema._belongsToRelations
       if inverse = @get("#{name}.#{options.inverse}")
         inverse.pushObject this if inverse.get('isLoaded')
+
+  _url: Ember.computed(->
+    baseUrl = config.rootUrl + @constructor.schema._url
+
+    if id = @get('id')
+      [baseUrl, id].join('/')
+    else
+      baseUrl
+  ).property('id')
 
 lookupType = (type) ->
   if typeof(type) == 'string'
@@ -71,24 +92,10 @@ Ember.Thin.Model.reopenClass
   load: (attrs) ->
     throw new Error('missing `id` attribute') unless id = attrs.id
 
-    camelized = camelizeKeys(attrs)
-
     unless model = @identityMap[id]
       model = @identityMap[id] = @create()
 
-    model.setProperties sliceObject(camelized, keys(@schema._fields))
-
-    for name, options of @schema._hasManyRelations
-      if relAttrs = attrs[name]
-        model.get(name).load relAttrs
-
-    for name, options of @schema._belongsToRelations
-      if relAttrs = attrs[name]
-        lookupType(options.type).load relAttrs
-        model.set "#{name}Id", relAttrs.id
-
-    do model.wireRelations
-
+    model._load attrs
     model
 
   _setupRelations: ->
