@@ -1,7 +1,7 @@
 {get, keys, required} = Ember
 
 Ember.Thin =
-  ajax: (url, method, data = {}) ->
+  ajax: (method, url, data = {}) ->
     new Ember.RSVP.Promise (resolve, reject) ->
       data = JSON.stringify(data) unless method == 'GET'
 
@@ -16,40 +16,66 @@ Ember.Thin =
 Ember.Thin.config = config =
   rootUrl: ''
 
-Ember.Thin.Model = Ember.Object.extend
+Ember.Thin.Model = Ember.Object.extend Ember.Evented,
+  isSaved:   Ember.computed.bool('id')
+  relations: []
+
+  wireRelations: ->
+    for name, options of @constructor.schema._belongsToRelations
+      if inverse = @get("#{name}.#{options.inverse}")
+        inverse.pushObject this if inverse.get('isLoaded')
+
   toJSON: ->
-    @getProperties keys(@constructor.schema.fields)
+    @getProperties(keys(@constructor.schema._fields))
 
   _url: Ember.computed(->
     baseUrl = config.rootUrl + @constructor.schema._url
 
-    Ember.A([baseUrl, @get('id')]).compact().join('/')
+    if @get('isSaved')
+      [baseUrl, @get('id')].join('/')
+    else
+      baseUrl
   ).property('id')
 
+  save: ->
+    method = if @get('isSaved') then 'PUT' else 'POST'
+
+    Ember.Thin.ajax(method, @get('_url'), @toJSON()).then (json) =>
+      @setProperties json
+
+      this
+
+lookupType = (type) ->
+  if typeof(type) == 'string'
+    get(Ember.lookup, type)
+  else
+    type
+
 Ember.Thin.Model.reopenClass
-  define: (block) ->
-    schema = Ember.Thin.Schema.create()
+  find: (id) ->
+    @identityMap[id]
 
-    block.call schema
+  load: (attrs) ->
+    throw new Error('missing `id` attribute') unless id = attrs.id
 
-    klass = @extend()
-    klass.schema = schema
-
-    do klass._setupRelations
-
-    klass
+    model = @identityMap[id] = @create(attrs)
+    do model.wireRelations
+    model
 
   _setupRelations: ->
-    definition = {}
+    definitions = {}
 
-    for name, options of @schema.relations
-      definition[name] = @_getHasMany(name, options)
+    for name, options of @schema._hasManyRelations
+      definitions[name] = @_getHasMany(name, options)
 
-    @reopen definition
+    for name, options of @schema._belongsToRelations
+      definitions[name] = @_getBelongsTo(name, options)
+
+    @reopen definitions
 
   _getHasMany: (key, options) ->
     Ember.computed(->
-      type = get(Ember.lookup, options.type) if typeof(options.type) == 'string'
+      type = lookupType(options.type)
 
       Ember.Thin.HasManyArray.create(
         key:     key
@@ -59,36 +85,84 @@ Ember.Thin.Model.reopenClass
       )
     ).property()
 
+  _getBelongsTo: (key, options) ->
+    Ember.computed(->
+      type = lookupType(options.type)
+
+      type.find(@get("#{key}Id"))
+    ).property()
+
 Ember.Thin.Schema = Ember.Object.extend
-  _url:      null
-  fields:    {}
-  relations: {}
+  _url: null
+
+  init: ->
+    @_super arguments...
+
+    @_fields             = {}
+    @_hasManyRelations   = {}
+    @_belongsToRelations = {}
 
   url: (@_url) ->
 
   field: (name, options = {}) ->
-    @fields[name] = options
+    @_fields[name] = options
 
   hasMany: (name, options = {}) ->
-    @relations[name] = options
+    @_hasManyRelations[name] = options
 
-Ember.Thin.HasManyArray = Ember.ArrayProxy.extend
+  belongsTo: (name, options = {}) ->
+    @_belongsToRelations[name] = options
+
+Ember.Thin.Schema.reopenClass
+  define: (block) ->
+    schema = @create()
+
+    block.call schema
+
+    type = Ember.Thin.Model.extend()
+
+    type.schema      = schema
+    type.identityMap = {}
+
+    do type._setupRelations
+
+    type
+
+Ember.Thin.HasManyArray = Ember.ArrayProxy.extend Ember.Evented,
   key:      required()
   type:     required()
   parent:   required()
+  options:  required()
   isLoaded: false
+  content:  Ember.A()
+
+  load: (array) ->
+    type   = @get('type')
+    models = Ember.A(array).map(type.load.bind(type))
+
+    @setProperties
+      isLoaded: true
+      content:  Ember.A(models)
+
+  objectAtContent: ->
+    do @fetch unless @get('isLoaded')
+
+    @_super arguments...
 
   fetch: ->
-    Ember.Thin.ajax(@get('_url'), 'GET').then (json) =>
+    Ember.Thin.ajax('GET', @get('url')).then (models) =>
       @setProperties
-        content:  Ember.A(json[@get('key')])
+        content:  Ember.A(models)
         isLoaded: true
 
-      this
+      @trigger 'load', this
 
-  _url: Ember.computed(->
-    if @options.nested
-      @get('parent._url') + @get('type.schema._url')
+      this
+    , -> console.log arguments...
+
+  url: Ember.computed(->
+    if @get('options.nested')
+      [@get('parent._url'), @get('key')].join('/')
     else
       config.rootUrl + @get('type.schema._url')
   ).property()

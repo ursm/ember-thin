@@ -10,91 +10,152 @@ require '../lib/ember-thin'
 beforeEach ->
   @sinon = sinon.sandbox.create()
 
-  @stubAjax = (returns) =>
+  @stubAjax = (method, url, returns) =>
     promise = new Ember.RSVP.Promise (resolve, reject) ->
       resolve returns
 
-    @sinon.stub(Ember.Thin, 'ajax').returns promise
+    @sinon.stub(Ember.Thin, 'ajax').withArgs(method, url).returns promise
 
 afterEach ->
   do @sinon.restore
+
+Ember.Thin.ajax = -> throw new Error('must stub it')
 
 Ember.Thin.config.rootUrl = '/api'
 
 global.App = Ember.Application.create()
 
-App.Organization = Ember.Thin.Model.define ->
+App.Organization = Ember.Thin.Schema.define ->
   @url '/organizations'
 
-  @field 'name'
-  @field 'slug'
+  @field 'id'
 
-  @hasMany 'users', type: 'App.User', inverse: 'organizations', nested: true
-  @hasMany 'rooms', type: 'App.Room', inverse: 'organization',  nested: true
+  @hasMany 'members', type: 'App.User', inverse: 'organization', nested: true
+  @hasMany 'rooms',   type: 'App.Room', inverse: 'organization',  nested: true
 
-App.User = Ember.Thin.Model.define ->
+App.User = Ember.Thin.Schema.define ->
   @url '/users'
 
+  @field 'id'
   @field 'name'
 
-  @hasMany 'rooms', type: 'App.Room', inverse: 'members', nested: true
+  @belongsTo 'organization', type: 'App.Organization', inverse: 'members'
+  @hasMany   'rooms',        type: 'App.Room',         inverse: 'members', nested: true
 
-App.Room = Ember.Thin.Model.define ->
+App.Room = Ember.Thin.Schema.define ->
   @url '/rooms'
 
-  @field 'name'
+  @field 'id'
 
-  @hasMany 'members', type: 'App.User', inverse: 'rooms', nested: true
+  @belongsTo 'organization', type: 'App.Organization', inverse: 'rooms'
+  @hasMany   'members',      type: 'App.User',         inverse: 'rooms', nested: true
 
 describe 'Ember.Thin', ->
+  describe '.load', ->
+    it 'should load a record', ->
+      user = App.User.load(id: 42)
+
+      assert.equal user.get('id'), 42
+
   describe '.toJSON', ->
     it 'should convert to an object', ->
-      org = App.Organization.create(name: 'Foo', slug: 'foo')
+      user = App.User.load(id: 42, name: 'foo')
 
-      assert.deepEqual org.toJSON(), name: 'Foo', slug: 'foo'
+      assert.deepEqual user.toJSON(), id: 42, name: 'foo'
+
+  describe '.save', ->
+    context 'when record is unsaved', ->
+      it 'should post data', (done) ->
+        @stubAjax 'POST', '/api/users', id: 42, name: 'foo'
+
+        App.User.create(name: 'foo').save().then (user) ->
+          assert.deepEqual user.toJSON(), id: 42, name: 'foo'
+          do done
 
   describe '._url', ->
     beforeEach ->
-      @org = App.Organization.create()
+      @user = App.User.create()
 
     context 'have ID', ->
       it 'should contain ID within URL', ->
-        @org.set 'id', 42
+        @user.set 'id', 42
 
-        assert.equal @org.get('_url'), '/api/organizations/42'
+        assert.equal @user.get('_url'), '/api/users/42'
 
     context 'do not have ID', ->
       it 'should not contain ID within URL', ->
-        @org.set 'id', null
+        @user.set 'id', null
 
-        assert.equal @org.get('_url'), '/api/organizations'
+        assert.equal @user.get('_url'), '/api/users'
 
-  describe 'has many relation', ->
-    it 'should be kind of HasManyArray', ->
-      org = App.Organization.create(id: 42)
+  describe 'one-to-many relation', ->
+    describe '.load', ->
+      it 'should load records', ->
+        org     = App.Organization.load(id: 42)
+        members = org.get('members')
 
-      assert.equal org.get('users').constructor, Ember.Thin.HasManyArray
+        assert.ok    !members.get('isLoaded')
+        assert.equal members.get('length'), 0
 
-    describe '._url', ->
+        members.load [
+          {id: 1}
+          {id: 2}
+        ]
+
+        assert.ok    members.get('isLoaded')
+        assert.equal members.get('length'), 2
+        assert.equal members.get('firstObject').constructor, App.User
+
+      it 'should get parent model', ->
+        org     = App.Organization.load(id: 42)
+        members = org.get('members')
+
+        assert.equal members.get('parent'), org
+
+    describe '.url', ->
       beforeEach ->
-        @org = App.Organization.create(id: 42)
+        @org = App.Organization.load(id: 42)
 
       context 'nested resource', ->
         it 'should return nested URL', ->
-          assert.equal @org.get('users._url'), '/api/organizations/42/users'
+          assert.equal @org.get('members.url'), '/api/organizations/42/members'
 
-    describe '.fetch', ->
+    context 'get unloaded relation', ->
       beforeEach ->
-        @stubAjax
-          users: [
-            {id: 1}
-            {id: 2}
-            {id: 3}
-          ]
+        @stubAjax 'GET', '/api/organizations/42/members', [
+          {id: 1}
+          {id: 2}
+          {id: 3}
+        ]
 
       it 'should fetch records', (done) ->
-        org = App.Organization.create(id: 42)
+        org = App.Organization.load(id: 42)
 
-        org.get('users').fetch().then (users) ->
-          assert.equal users.get('length'), 3
+        org.get('members').on 'load', (members) ->
+          assert.ok    members.get('isLoaded')
+          assert.equal members.get('length'), 3
           do done
+
+        # trigger 'load'
+        org.get('members.firstObject')
+
+  describe 'belongsTo relation', ->
+    beforeEach ->
+      @org = App.Organization.load(id: 42)
+
+    context 'when inverse relation is loaded', ->
+      beforeEach ->
+        do @org.get('members').load
+
+      it 'should be automatically wired', ->
+        user = App.User.load(id: 1, organizationId: 42)
+
+        assert.equal user.get('organization'), @org
+        assert.ok    @org.get('members').contains(user)
+
+    context 'when inverse relation is not loaded', ->
+      it 'should do nothing', ->
+        user = App.User.load(id: 1, organizationId: 42)
+
+        assert.equal user.get('organization'), @org
+        assert.ok    !@org.get('members.isLoaded')
