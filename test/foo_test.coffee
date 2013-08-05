@@ -19,36 +19,35 @@ beforeEach ->
 afterEach ->
   do @sinon.restore
 
-Ember.Thin.ajax = -> throw new Error('must stub it')
+beforeEach ->
+  Ember.Thin.ajax = -> throw new Error('must stub it')
 
-Ember.Thin.config.rootUrl = '/api'
+  Ember.Thin.config.rootUrl = '/api'
 
-global.App = Ember.Application.create()
+  global.App = Ember.Application.create()
 
-App.Organization = Ember.Thin.Schema.define ->
-  @url '/organizations'
+  App.Organization = Ember.Thin.Schema.define ->
+    @url '/organizations'
 
-  @field 'id'
+    @field 'id'
 
-  @hasMany 'members', type: 'App.User', inverse: 'organization', nested: true
-  @hasMany 'rooms',   type: 'App.Room', inverse: 'organization',  nested: true
+    @hasMany 'members', type: 'App.User', inverse: 'organization', nested: true
 
-App.User = Ember.Thin.Schema.define ->
-  @url '/users'
+  App.User = Ember.Thin.Schema.define ->
+    @url '/users'
 
-  @field 'id'
-  @field 'name'
+    @field 'id'
+    @field 'name'
 
-  @belongsTo 'organization', type: 'App.Organization', inverse: 'members'
-  @hasMany   'rooms',        type: 'App.Room',         inverse: 'members', nested: true
+    @belongsTo 'organization', type: 'App.Organization', inverse: 'members'
+    @hasMany   'rooms',        type: 'App.Room',         inverse: 'members', nested: true
 
-App.Room = Ember.Thin.Schema.define ->
-  @url '/rooms'
+  App.Room = Ember.Thin.Schema.define ->
+    @url '/rooms'
 
-  @field 'id'
+    @field 'id'
 
-  @belongsTo 'organization', type: 'App.Organization', inverse: 'rooms'
-  @hasMany   'members',      type: 'App.User',         inverse: 'rooms', nested: true
+    @hasMany 'members', type: 'App.User', inverse: 'rooms', nested: true
 
 describe 'Ember.Thin', ->
   describe '.load', ->
@@ -57,6 +56,14 @@ describe 'Ember.Thin', ->
 
       assert.equal user.get('id'), 42
 
+    context 'twice', ->
+      it 'should update a record', ->
+        one = App.User.load(id: 42, name: 'foo')
+        two = App.User.load(id: 42, name: 'bar')
+
+        assert.equal one, two
+        assert.equal two.get('name'), 'bar'
+
   describe '.toJSON', ->
     it 'should convert to an object', ->
       user = App.User.load(id: 42, name: 'foo')
@@ -64,11 +71,28 @@ describe 'Ember.Thin', ->
       assert.deepEqual user.toJSON(), id: 42, name: 'foo'
 
   describe '.save', ->
+    beforeEach ->
+      @user = App.User.create()
+
     context 'when record is unsaved', ->
-      it 'should post data', (done) ->
+      beforeEach ->
         @stubAjax 'POST', '/api/users', id: 42, name: 'foo'
 
-        App.User.create(name: 'foo').save().then (user) ->
+      it 'should post data', (done) ->
+        @user.save().then (user) =>
+          assert.equal     user, @user
+          assert.deepEqual user.toJSON(), id: 42, name: 'foo'
+          do done
+
+    context 'when record is saved', ->
+      beforeEach ->
+        @user.set 'id', 42
+
+        @stubAjax 'PUT', '/api/users/42', id: 42, name: 'foo'
+
+      it 'should post data', (done) ->
+        @user.save().then (user) =>
+          assert.equal     user, @user
           assert.deepEqual user.toJSON(), id: 42, name: 'foo'
           do done
 

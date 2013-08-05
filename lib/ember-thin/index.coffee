@@ -17,9 +17,6 @@ Ember.Thin.config = config =
   rootUrl: ''
 
 Ember.Thin.Model = Ember.Object.extend Ember.Evented,
-  isSaved:   Ember.computed.bool('id')
-  relations: []
-
   wireRelations: ->
     for name, options of @constructor.schema._belongsToRelations
       if inverse = @get("#{name}.#{options.inverse}")
@@ -31,14 +28,14 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
   _url: Ember.computed(->
     baseUrl = config.rootUrl + @constructor.schema._url
 
-    if @get('isSaved')
-      [baseUrl, @get('id')].join('/')
+    if id = @get('id')
+      [baseUrl, id].join('/')
     else
       baseUrl
   ).property('id')
 
   save: ->
-    method = if @get('isSaved') then 'PUT' else 'POST'
+    method = if @get('id') then 'PUT' else 'POST'
 
     Ember.Thin.ajax(method, @get('_url'), @toJSON()).then (json) =>
       @setProperties json
@@ -58,8 +55,13 @@ Ember.Thin.Model.reopenClass
   load: (attrs) ->
     throw new Error('missing `id` attribute') unless id = attrs.id
 
-    model = @identityMap[id] = @create(attrs)
+    if model = @identityMap[id]
+      model.setProperties attrs
+    else
+      model = @identityMap[id] = @create(attrs)
+
     do model.wireRelations
+
     model
 
   _setupRelations: ->
