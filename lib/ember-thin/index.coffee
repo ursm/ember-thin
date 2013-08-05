@@ -115,11 +115,13 @@ Ember.Thin.Model.reopenClass
     ).property()
 
   _getBelongsTo: (key, options) ->
+    idName = "#{key}Id"
+
     Ember.computed(->
       type = lookupType(options.type)
 
-      type.find(@get("#{key}Id"))
-    ).property()
+      type.find(@get(idName))
+    ).property(idName)
 
 Ember.Thin.Schema = Ember.Object.extend
   _url: null

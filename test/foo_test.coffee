@@ -163,22 +163,34 @@ describe 'Ember.Thin', ->
         org.get('members.firstObject')
 
   describe 'belongsTo relation', ->
-    beforeEach ->
-      @org = App.Organization.load(id: 42)
+    it 'should moved on with foreign key', ->
+      org1 = App.Organization.load(id: 42)
+      org2 = App.Organization.load(id: 4423)
+
+      user = App.User.load(id: 1, organization_id: 42)
+
+      assert.equal user.get('organization'), org1
+
+      user.set 'organizationId', 4423
+
+      assert.equal user.get('organization'), org2
 
     context 'when inverse relation is loaded', ->
       beforeEach ->
-        do @org.get('members').load
 
       it 'should be automatically wired', ->
+        org = App.Organization.load(id: 42)
+        org.get('members').load()
+
         user = App.User.load(id: 1, organization_id: 42)
 
-        assert.equal user.get('organization'), @org
-        assert.ok    @org.get('members').contains(user)
+        assert.equal user.get('organization'), org
+        assert.ok    org.get('members').contains(user)
 
     context 'when inverse relation is not loaded', ->
       it 'should not do anything', ->
+        org  = App.Organization.load(id: 42)
         user = App.User.load(id: 1, organization_id: 42)
 
-        assert.equal user.get('organization'), @org
-        assert.ok    !@org.get('members.isLoaded')
+        assert.equal user.get('organization'), org
+        assert.ok    !org.get('members.isLoaded')
