@@ -39,6 +39,8 @@ Ember.Thin.config = config =
   rootUrl: ''
 
 Ember.Thin.Model = Ember.Object.extend Ember.Evented,
+  isLoaded: true
+
   toJSON: ->
     underscoreKeys(@getProperties(keys(@constructor.schema._fields)))
 
@@ -50,30 +52,39 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
   _load: (json) ->
     camelized = camelizeKeys(json)
 
-    @setProperties sliceObject(camelized, keys(@constructor.schema._fields))
+    props          = sliceObject(camelized, keys(@constructor.schema._fields))
+    props.isLoaded = true
+
+    @setProperties props
 
     @_loadNestedHasMany   camelized
     @_loadNestedBelongsTo camelized
 
     do @_wireRelations
 
+    @trigger 'didLoad'
+
     this
 
   _loadNestedHasMany: (json) ->
     for name in keys(@constructor.schema._hasManyRelations)
-      if nested = json[name]
-        @get(name).load nested
+      continue unless array = json[name]
+
+      @get(name).load array
 
   _loadNestedBelongsTo: (json) ->
     for name, options of @constructor.schema._belongsToRelations
-      if nested = json[name]
-        lookupType(options.type).load nested
-        @set "#{name}Id", nested.id
+      continue unless obj = json[name]
+
+      lookupType(options.type).load obj
+      @set "#{name}Id", obj.id
 
   _wireRelations: ->
     for name, options of @constructor.schema._belongsToRelations
-      if inverse = @get("#{name}.#{options.inverse}")
-        inverse.pushObject this if inverse.get('isLoaded')
+      continue unless @get("#{name}IsLoaded")
+      continue unless @get("#{name}.#{options.inverse}.isLoaded")
+
+      @get("#{name}.#{options.inverse}").pushObject this
 
   _url: computed(->
     baseUrl = config.rootUrl + @constructor.schema._url
@@ -86,14 +97,18 @@ Ember.Thin.Model = Ember.Object.extend Ember.Evented,
 
 Ember.Thin.Model.reopenClass
   find: (id) ->
-    @identityMap[id]
+    return model if model = @identityMap[id]
+
+    model = @identityMap[id] = @create(id: id, isLoaded: false)
+
+    Ember.Thin.ajax('GET', model.get('_url')).then model._load.bind(model)
+
+    model
 
   load: (json) ->
     throw new Error('missing `id` attribute') unless id = json.id
 
-    unless model = @identityMap[id]
-      model = @identityMap[id] = @create()
-
+    model = @identityMap[id] = @create() unless model = @identityMap[id]
     model._load(json)
 
   _setupRelations: ->
@@ -103,7 +118,8 @@ Ember.Thin.Model.reopenClass
       definitions[name] = @_getHasMany(name, options)
 
     for name, options of @schema._belongsToRelations
-      definitions[name] = @_getBelongsTo(name, options)
+      definitions[name]            = @_getBelongsTo(name, options)
+      definitions["#{name}IsLoaded"] = false
 
     @reopen definitions
 
@@ -123,9 +139,12 @@ Ember.Thin.Model.reopenClass
     idName = "#{key}Id"
 
     computed(->
-      type = lookupType(options.type)
+      type  = lookupType(options.type)
+      model = type.find(@get(idName))
 
-      type.find(@get(idName))
+      @set "#{key}IsLoaded", true
+
+      model
     ).property(idName)
 
 Ember.Thin.Schema = Ember.Object.extend

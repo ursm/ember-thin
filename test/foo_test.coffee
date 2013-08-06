@@ -20,7 +20,7 @@ afterEach ->
   do @sinon.restore
 
 beforeEach ->
-  Ember.Thin.ajax = -> throw new Error('must stub it')
+  Ember.Thin.ajax = -> throw new Error("must stub it: #{Ember.inspect(arguments)}")
 
   Ember.Thin.config.rootUrl = '/api'
 
@@ -70,6 +70,22 @@ beforeEach ->
     @hasMany 'subscribers', type: 'App.User', inverse: 'subscribedLists'
 
 describe 'Ember.Thin', ->
+  describe '.find', ->
+    it 'should fetch and return a model', (done) ->
+      @stubAjax 'GET', '/api/users/42', id: 42, screen_name: 'ursm'
+
+      user = App.User.find(42)
+
+      assert.ok    !user.get('isLoaded')
+      assert.equal user.get('id'),         42
+      assert.equal user.get('screenName'), undefined
+
+      user.on 'didLoad', ->
+        assert.ok    user.get('isLoaded')
+        assert.equal user.get('screenName'), 'ursm'
+
+        do done
+
   describe '.load', ->
     it 'should load payload and return a model', ->
       user = App.User.load(id: 42, screen_name: 'ursm')
