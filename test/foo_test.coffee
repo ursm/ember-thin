@@ -26,72 +26,87 @@ beforeEach ->
 
   global.App = Ember.Application.create()
 
-  App.Organization = Ember.Thin.Schema.define ->
-    @url '/organizations'
-
-    @field 'id'
-    @field 'name'
-
-    @hasMany 'members', type: 'App.User', inverse: 'organization', nested: true
-
   App.User = Ember.Thin.Schema.define ->
     @url '/users'
 
     @field 'id'
-    @field 'name'
-    @field 'realName'
+    @field 'screenName'
 
-    @belongsTo 'organization', type: 'App.Organization', inverse: 'members'
-    @hasMany   'rooms',        type: 'App.Room',         inverse: 'members', nested: true
+    @hasMany 'followings',      type: 'App.User',    inverse: 'followers'
+    @hasMany 'followers',       type: 'App.User',    inverse: 'followings'
+    @hasMany 'tweets',          type: 'App.Tweet',   inverse: 'user',       nested: true
+    @hasMany 'messages',        type: 'App.Message', inverse: 'to',         nested: true
+    @hasMany 'sentMessages',    type: 'App.Message', inverse: 'from',       nested: true
+    @hasMany 'lists',           type: 'App.List',    inverse: 'owner',      nested: true
+    @hasMany 'subscribedLists', type: 'App.List',    inverse: 'subscribers'
+    @hasMany 'memberOfLists',   type: 'App.List',    inverse: 'members'
 
-  App.Room = Ember.Thin.Schema.define ->
-    @url '/rooms'
+  App.Tweet = Ember.Thin.Schema.define ->
+    @url '/tweets'
+
+    @field 'id'
+    @field 'body'
+
+    @belongsTo 'user', type: 'App.User', inverse: 'tweets'
+
+  App.Message = Ember.Thin.Schema.define ->
+    @url '/messages'
+
+    @field 'id'
+    @field 'body'
+
+    @belongsTo 'from', type: 'App.User', inverse: 'sentMessages'
+    @belongsTo 'to',   type: 'App.User', inverse: 'messages'
+
+  App.List = Ember.Thin.Schema.define ->
+    @url '/lists'
 
     @field 'id'
     @field 'name'
 
-    @hasMany 'members', type: 'App.User', inverse: 'rooms', nested: true
+    @belongsTo 'owner', type: 'App.User'
+
+    @hasMany 'members',     type: 'App.User', inverse: 'memberOfLists'
+    @hasMany 'subscribers', type: 'App.User', inverse: 'subscribedLists'
 
 describe 'Ember.Thin', ->
   describe '.load', ->
     it 'should load payload and return a model', ->
-      user = App.User.load(id: 42, real_name: 'foo')
+      user = App.User.load(id: 42, screen_name: 'ursm')
 
-      assert.equal user.get('id'),       42
-      assert.equal user.get('realName'), 'foo'
+      assert.equal user.get('id'),         42
+      assert.equal user.get('screenName'), 'ursm'
 
     it 'should load hasMany relation within payload', ->
-      user = App.User.load(id: 42, rooms: [
-        {id: 1, name: 'foo'}
-        {id: 2, name: 'bar'}
+      user = App.User.load(id: 42, tweets: [
+        {id: 1, body: 'hello'}
+        {id: 2, body: 'world'}
       ])
 
-      assert.ok    user.get('rooms.isLoaded')
-      assert.equal user.get('rooms.length'),           2
-      assert.equal user.get('rooms.firstObject.name'), 'foo'
+      assert.ok    user.get('tweets.isLoaded')
+      assert.equal user.get('tweets.length'),           2
+      assert.equal user.get('tweets.firstObject.body'), 'hello'
 
     it 'should load belongsTo relation within payload', ->
-      user = App.User.load(id: 42, organization: {id: 4423, name: 'esminc'})
+      tweet = App.Tweet.load(id: 42, user: {id: 4423, screen_name: 'ursm'})
 
-      assert.equal user.get('organizationId'),           4423
-      assert.equal user.get('organization').constructor, App.Organization
-      assert.equal user.get('organization.name'),        'esminc'
+      assert.equal tweet.get('userId'),           4423
+      assert.equal tweet.get('user').constructor, App.User
+      assert.equal tweet.get('user.screenName'),  'ursm'
 
     context 'twice', ->
       it 'should update a record', ->
-        one = App.User.load(id: 42, name: 'foo')
-        two = App.User.load(id: 42, name: 'bar')
+        one = App.User.load(id: 42, screen_name: 'foo')
+        two = App.User.load(id: 42, screen_name: 'bar')
 
         assert.equal one, two
-        assert.equal two.get('name'), 'bar'
+        assert.equal two.get('screenName'), 'bar'
 
   describe '.toJSON', ->
     it 'should convert to an object', ->
-      json = App.User.create(id: 42, name: 'ursm', realName: 'Keita Urashima').toJSON()
+      json = App.User.create(id: 42, screenName: 'ursm').toJSON()
 
-      assert.equal json.id,        42
-      assert.equal json.name,      'ursm'
-      assert.equal json.real_name, 'Keita Urashima'
+      assert.deepEqual json, {id: 42, screen_name: 'ursm'}
 
   describe '.save', ->
     beforeEach ->
@@ -111,87 +126,84 @@ describe 'Ember.Thin', ->
       beforeEach ->
         @user.set 'id', 42
 
-        @stubAjax 'PUT', '/api/users/42', id: 42, name: 'ursm'
+        @stubAjax 'PUT', '/api/users/42', id: 42, screen_name: 'ursm'
 
       it 'should post data', (done) ->
         @user.save().then (user) =>
           assert.equal user, @user
-          assert.equal user.get('name'), 'ursm'
+          assert.equal user.get('screenName'), 'ursm'
           do done
 
   describe 'one-to-many relation', ->
+    it 'should get parent model', ->
+      user = App.User.load(id: 42)
+
+      assert.equal user.get('tweets.parent'), user
+
     describe '.load', ->
       it 'should load records', ->
-        org     = App.Organization.load(id: 42)
-        members = org.get('members')
+        user   = App.User.load(id: 42)
+        tweets = user.get('tweets')
 
-        assert.ok    !members.get('isLoaded')
-        assert.equal members.get('length'), 0
+        assert.ok    !tweets.get('isLoaded')
+        assert.equal tweets.get('length'), 0
 
-        members.load [
+        tweets.load [
           {id: 1}
           {id: 2}
         ]
 
-        assert.ok    members.get('isLoaded')
-        assert.equal members.get('length'), 2
-        assert.equal members.get('firstObject').constructor, App.User
-
-      it 'should get parent model', ->
-        org     = App.Organization.load(id: 42)
-        members = org.get('members')
-
-        assert.equal members.get('parent'), org
+        assert.ok    tweets.get('isLoaded')
+        assert.equal tweets.get('length'), 2
+        assert.equal tweets.get('firstObject').constructor, App.Tweet
 
     context 'get unloaded relation', ->
       beforeEach ->
-        @stubAjax 'GET', '/api/organizations/42/members', [
+        @stubAjax 'GET', '/api/users/42/tweets', [
           {id: 1}
           {id: 2}
           {id: 3}
         ]
 
       it 'should fetch records', (done) ->
-        org = App.Organization.load(id: 42)
+        user = App.User.load(id: 42)
 
-        org.get('members').on 'didLoad', (members) ->
-          assert.ok    members.get('isLoaded')
-          assert.equal members.get('length'),                  3
-          assert.equal members.get('firstObject').constructor, App.User
+        user.get('tweets').on 'didLoad', (tweets) ->
+          assert.ok    tweets.get('isLoaded')
+          assert.equal tweets.get('length'),                  3
+          assert.equal tweets.get('firstObject').constructor, App.Tweet
           do done
 
-        # trigger 'load'
-        org.get('members.firstObject')
+        # trigger 'didLoad'
+        user.get('tweets.firstObject')
 
   describe 'belongsTo relation', ->
     it 'should moved on with foreign key', ->
-      org1 = App.Organization.load(id: 42)
-      org2 = App.Organization.load(id: 4423)
+      user1 = App.User.load(id: 42)
+      user2 = App.User.load(id: 4423)
 
-      user = App.User.load(id: 1, organization_id: 42)
+      list = App.List.load(id: 1, owner_id: 42)
 
-      assert.equal user.get('organization'), org1
+      assert.equal list.get('owner'), user1
 
-      user.set 'organizationId', 4423
+      list.set 'ownerId', 4423
 
-      assert.equal user.get('organization'), org2
+      assert.equal list.get('owner'), user2
 
     context 'when inverse relation is loaded', ->
-      beforeEach ->
-
       it 'should be automatically wired', ->
-        org = App.Organization.load(id: 42)
-        org.get('members').load()
+        user = App.User.load(id: 42)
+        user.get('tweets').load()
 
-        user = App.User.load(id: 1, organization_id: 42)
+        tweet = App.Tweet.load(id: 1, user_id: 42)
 
-        assert.equal user.get('organization'), org
-        assert.ok    org.get('members').contains(user)
+        assert.equal tweet.get('user'), user
+        assert.ok    user.get('tweets').contains(tweet)
 
     context 'when inverse relation is not loaded', ->
       it 'should not do anything', ->
-        org  = App.Organization.load(id: 42)
-        user = App.User.load(id: 1, organization_id: 42)
+        user  = App.User.load(id: 42)
+        tweet = App.Tweet.load(id: 1, user_id: 42)
 
-        assert.equal user.get('organization'), org
-        assert.ok    !org.get('members.isLoaded')
+        assert.equal tweet.get('user'), user
+        assert.ok    !user.get('tweets.isLoaded')
